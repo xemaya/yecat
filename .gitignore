@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.log
+# 成片、配音、音乐、H3 原片太大，不进仓库
+*.mp4
+*.mp3
+*.wav
+*.f32
+# 中间产物：检查图、废稿
+ep01/build/
+ep01/art/_v1/
