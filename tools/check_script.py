@@ -27,7 +27,8 @@ MIN_SHOT, COVER_MIN, HIGHLIGHT_MIN = 4.0, 5.5, 7.0
 EXCUSES = {1: "买多了", 2: "那就是风", 5: "路过", 8: "路上捡的", 10: "饺子，买多了", 12: "风写的"}
 EP01_LINES = ["我上夜班，白天不吵你。", "买多了。", "上班……用力过头了。", "这次……算我欠你的。", "室友嘛。"]
 META_KEYS = ["揭开", "推进", "借口", "尾尖闪", "名场面", "画面字", "通宵", "体型", "第9页收法", "她的手法", "偏离v2"]
-ENDINGS = ["旁白", "夜", "纸条", "空镜"]
+ENDINGS = ["旁白", "晴", "夜", "纸条", "空镜"]
+EP01_ENDING = "旁白"
 
 EMOTION = ["难过", "伤心", "开心", "高兴", "快乐", "感动", "失望", "生气", "愤怒", "害怕", "孤独", "孤单", "心疼",
            "幸福", "心动", "害羞", "委屈", "想哭", "难受", "激动", "安心", "舍不得"]
@@ -40,6 +41,9 @@ ORDER_START = ["别", "不要", "快", "过来", "回来", "睡", "穿", "吃", 
 TROPES = ["停电", "发烧", "卡在门框", "卡在窗框", "读心", "俯瞰全城", "尾巴扶"]
 WRITING = ["写着", "字样", "上面写", "招牌上"]
 SOFA = re.compile(r"沙发那么大|沙发大小|像沙发一样大|变成沙发|沙发大的")
+NEGATIVE = re.compile(r"没有(?!任何人|人|猫|下雨|雨|字|文字)[\u4e00-\u9fff]{1,4}|不是[\u4e00-\u9fff]{1,4}的")
+COMPARE = re.compile(r"更暖|更亮|更暗|比以前|比之前|比平时")
+FACE = ["眯着眼", "眯眼", "嘴角", "眼神", "表情", "笑"]
 
 HANZI = re.compile(r"[一-鿿0-9A-Za-z]")
 SENT = re.compile(r"[。？！?!；;]+")
@@ -78,6 +82,7 @@ class Page:
     lines: list = field(default_factory=list)
     dur: dict = field(default_factory=dict)      # panel -> 建议秒数
     note: str = ""
+    refs: list = field(default_factory=list)     # 参考图，相对仓库根目录
     lineno: int = 0
     has_text_field: bool = False
 
@@ -183,6 +188,8 @@ def parse(path):
                         page.dur[dm.group(1) or ""] = float(dm.group(2))
             elif key == "落地备注":
                 page.note = val
+            elif key == "参考":
+                page.refs = [x for x in re.split(r"[、，,\s]+", val) if x]
     return ep
 
 
@@ -368,6 +375,18 @@ def check(ep):
             for t in TROPES:
                 if t in sc:
                     warn(w, f"“{t}”是红队清单里的桥段，全季最多一次，记进 准则/连续性.md")
+            if "猫" in sc and "没有猫" not in sc and "月牙" not in sc:
+                warn(w, "画面里有夜，写明月牙亮度（暗 / 微光 / 发亮），v2 制作备注")
+            neg = NEGATIVE.search(sc)
+            if neg:
+                warn(w, f"“{neg.group(0)}”是否定句，出图容易反着画，改成写看得见的样子（比如“空的螺口灯座”）")
+            cmp_ = COMPARE.search(sc)
+            if cmp_:
+                warn(w, f"“{cmp_.group(0)}”画不出来，写成看得见的差别（灯泡形状、光的颜色）")
+            if "远景" in sc:
+                hits = [f for f in FACE if f in sc]
+                if hits:
+                    warn(w, f"远景里看不清“{'、'.join(hits)}”")
     if len(tail_pages) > 1:
         err("全集", f"尾尖闪了 {len(tail_pages)} 次（{'、'.join(tail_pages)}），每集最多一次")
     want = page_no(ep.meta.get("尾尖闪"))
@@ -430,9 +449,13 @@ def check(ep):
         key = hanzi(ln.text)
         if len(key) >= 3 and key in seen and not ln.callback:
             warn(at(ln), f"和{seen[key]}的字一样，故意的就在句尾加“（呼应 {seen[key]}）”：{ln.text}")
-    prev = others.get(ep.no - 1)
-    if prev and end and prev.meta.get("第9页收法", "") == end:
-        warn("本集", f"第 9 页收法和第 {prev.no} 集一样（{end}），连着两集要换")
+    prev_end = EP01_ENDING if ep.no == 2 else others[ep.no - 1].meta.get("第9页收法", "") if ep.no - 1 in others else ""
+    if prev_end and end and prev_end == end:
+        warn("本集", f"第 9 页收法和第 {ep.no - 1} 集一样（{end}），连着两集要换")
+    for p in ep.pages:
+        for r in p.refs:
+            if not os.path.exists(os.path.join(ROOT, r)):
+                warn(f"P{p.no}", f"参考图不存在：{r}")
 
     stats = {k: sum(len(hanzi(ln.text)) for ln in body if ln.kind == k) for k in ("旁白", "晴", "夜", "配角", "画面字")}
     n_shots, dur, hi_t = estimate(ep)
