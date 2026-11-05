@@ -44,6 +44,7 @@ SOFA = re.compile(r"沙发那么大|沙发大小|像沙发一样大|变成沙发
 NEGATIVE = re.compile(r"没有(?!任何人|人|猫|下雨|雨|字|文字)[\u4e00-\u9fff]{1,4}|不是[\u4e00-\u9fff]{1,4}的")
 COMPARE = re.compile(r"更暖|更亮|更暗|比以前|比之前|比平时")
 FACE = ["眯着眼", "眯眼", "嘴角", "眼神", "表情", "笑"]
+CONTINUOUS = re.compile(r"一盏一盏|一颗一颗|一个一个|一件一件|一段一段|慢慢地?(?:变|亮|走|飘)")
 
 HANZI = re.compile(r"[一-鿿0-9A-Za-z]")
 SENT = re.compile(r"[。？！?!；;]+")
@@ -383,6 +384,11 @@ def check(ep):
             cmp_ = COMPARE.search(sc)
             if cmp_:
                 warn(w, f"“{cmp_.group(0)}”画不出来，写成看得见的差别（灯泡形状、光的颜色）")
+            cont = CONTINUOUS.search(sc)
+            if cont:
+                warn(w, f"“{cont.group(0)}”是连续动作，单张图画不出来，写成停住的那一刻（比如“已经亮了三盏”）；动作交给动效写在落地备注")
+            if "剪影" in sc and "眼" in sc:
+                warn(w, "剪影里看不见眼睛")
             if "远景" in sc:
                 hits = [f for f in FACE if f in sc]
                 if hits:
