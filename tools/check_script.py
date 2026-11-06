@@ -40,6 +40,14 @@ BOSS = ["女人", "我的人", "听话", "不许", "给我"]
 ORDER_START = ["别", "不要", "快", "过来", "回来", "睡", "穿", "吃", "喝", "记得", "小心", "等我", "跟我"]
 TROPES = ["停电", "发烧", "卡在门框", "卡在窗框", "读心", "俯瞰全城", "尾巴扶"]
 WRITING = ["写着", "字样", "上面写", "招牌上"]
+# 上屏的字不写专业术语（配方「文案」，用户定的）
+JARGON = re.compile(r"\d+\s*[Kk](?![A-Za-z])|色温|显色|显指|流明|勒克斯|照度|[Ll]ux|CRI")
+# 第 1 期定下的样子，画面里写错了会画成别的
+FIXED = {"电动车": "她走路回家，背帆布包、腰包，没有车（第 1 期 ep01r/var/5a_dry.png）",
+         "自行车": "她走路回家，背帆布包、腰包，没有车（第 1 期 ep01r/var/5a_dry.png）",
+         "庭院灯": "楼下是弯颈铁杆路灯，猫坐在弯臂上（ep01/art_C/5a.png）",
+         "灯帽": "楼下是弯颈铁杆路灯，猫坐在弯臂上（ep01/art_C/5a.png）"}
+HIGHLIGHT_SPAN = (0.40, 0.60)  # 名场面开始的位置占全片的比例（配方）
 SOFA = re.compile(r"沙发那么大|沙发大小|像沙发一样大|变成沙发|沙发大的")
 NEGATIVE = re.compile(r"没有(?!任何人|人|猫|下雨|雨|字|文字)[\u4e00-\u9fff]{1,4}|不是[\u4e00-\u9fff]{1,4}的")
 COMPARE = re.compile(r"更暖|更亮|更暗|比以前|比之前|比平时")
@@ -322,6 +330,9 @@ def check(ep):
             warn(at(ln), f"旁白一句 {len(ln.text)} 个字符，视频方定的是不超过 25 个：{ln.text}")
         elif len(ln.text) > 30:
             warn(at(ln), f"一句 {len(ln.text)} 个字符，字幕会超过两行：{ln.text}")
+        m = JARGON.search(ln.text)
+        if m:
+            err(at(ln), f"上屏的字不写专业术语“{m.group(0)}”（配方「文案」）：{ln.text}")
         if ln.kind in ("旁白", "晴") or ln.writer == "晴":
             for w in EMOTION:
                 if w in ln.text:
@@ -360,6 +371,9 @@ def check(ep):
     for p in ep.pages:
         for k, sc in p.scenes.items():
             w = f"P{p.no}{k}"
+            for f, why in FIXED.items():
+                if f in sc:
+                    warn(w, f"画面里有“{f}”：{why}")
             for u in UNFILMABLE:
                 if u in sc:
                     warn(w, f"画面里有拍不出来的“{u}”，改成动作、表情、道具或光")
@@ -465,6 +479,10 @@ def check(ep):
 
     stats = {k: sum(len(hanzi(ln.text)) for ln in body if ln.kind == k) for k in ("旁白", "晴", "夜", "配角", "画面字")}
     n_shots, dur, hi_t = estimate(ep)
+    lo, up = HIGHLIGHT_SPAN
+    if hi_t is not None and dur and not lo <= hi_t / dur <= up:
+        warn(f"P{hi}", f"名场面约在全片 {hi_t / dur:.0%} 处开始，配方定的是 {lo:.0%}–{up:.0%}；"
+                       "调无字镜头的建议时长，不靠加字")
     return E, W, stats, total, (n_shots, dur, hi_t)
 
 
@@ -475,7 +493,9 @@ def report(ep):
     share = f"（{stats['旁白'] / total:.0%}）" if total else ""
     print(f"  字数：旁白 {stats['旁白']}{share} · 晴 {stats['晴']} · 夜 {stats['夜']} · 配角 {stats['配角']} · 画面字 {stats['画面字']}")
     hi = ep.meta.get("名场面", "?")
-    hi_s = f"，名场面 {hi} 约从 {hi_t:.0f} 秒开始（v2 制作备注写的是 60–75 秒）" if hi_t is not None else ""
+    lo, up = HIGHLIGHT_SPAN
+    hi_s = (f"，名场面 {hi} 约从 {hi_t:.0f} 秒开始（全片 {hi_t / dur:.0%}，配方定 {lo:.0%}–{up:.0%}）"
+            if hi_t is not None and dur else "")
     print(f"  估算：{n_shots} 个镜头，约 {dur:.0f} 秒{hi_s}")
     print(f"  错误 {len(E)} · 警告 {len(W)}")
     for where, msg in E:
