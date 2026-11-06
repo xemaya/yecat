@@ -3,6 +3,7 @@
   glow 的 ("on", 起, 用时)：区域里的金光先暗着，到“起”秒用“用时”慢慢亮起来，亮了以后轻轻呼吸
     （P6：先亮掌心的星，再亮弯臂上那双眼睛）
   ("on", 起, 用时, "lum")：不只金色，区域里所有亮的线（白色的月牙、耳朵轮廓）都先全黑
+  PUSH：某个时刻起很慢地往一个点推近（P6 眼睛亮了以后推向弯臂，眼睛在手机上太小）
 
 第 1 期重做的 ../ep01r/motion.py 按第 1 期的镜头编号写死了冰箱、换姿势、走远，这里不继承它，用到时再借它的函数。
 
@@ -24,8 +25,10 @@ L.ART = os.path.join(HERE, "art")
 L.SPEC.clear()
 L.SPEC.update({
     "6": dict(glow=[((440, 380, 700, 640), ("on", 0.5, 1.8)), ((470, 90, 830, 228), ("on", 3.4, 2.2, "lum"))]),
-    "7": dict(glow=[((330, 600, 560, 820), "pulse")], twinkle=[(120, 420, 360, 720)]),  # 掌心的星呼吸；尾尖闪
+    "7": dict(glow=[((464, 600, 694, 820), "pulse")], twinkle=[(664, 420, 904, 720)]),  # 掌心的星呼吸；尾尖闪（图已左右翻转，灯杆在右）
 })
+
+PUSH = {"6": dict(at=3.4, secs=8.0, zoom=1.08, center=(600, 200))}  # 起、用时、推到多大、朝哪一点
 
 
 class Shot(L.Layered):
@@ -47,6 +50,18 @@ class Shot(L.Layered):
             elif mode == "pulse":
                 a = a + a * 0.10 * math.sin(2 * math.pi * t / 4.2) * m
         return a
+
+    def frame(self, t):
+        im = super().frame(t)
+        p = PUSH.get(self.key)
+        if not p or t <= p["at"]:
+            return im
+        z = 1 + (p["zoom"] - 1) * L.ease((t - p["at"]) / p["secs"])
+        cx, cy = p["center"]
+        w, h = self.W / z, self.H / z
+        x0 = min(max(cx - (cx / self.W) * w, 0), self.W - w)  # 推的时候那一点在画面里的位置不动
+        y0 = min(max(cy - (cy / self.H) * h, 0), self.H - h)
+        return im.crop((x0, y0, x0 + w, y0 + h)).resize((self.W, self.H), Image.LANCZOS)
 
 
 def check():
