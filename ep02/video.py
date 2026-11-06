@@ -3,6 +3,8 @@
   ../../../ucl-video/.venv/bin/python video.py              # 出 和夜一起住02.mp4
   ONLY=6 ../../../ucl-video/.venv/bin/python video.py       # 只出这几个镜头（样张），出 样张_6.mp4
 
+5b（取星）放 H3 片段，其余镜头是分层动效（motion.py）。
+
 字幕四种样式（配方.md）：旁白白字；晴白字 + 黑白“晴”字章；夜琥珀色 + 金“夜”字章；配角灰字。
 纸条按写纸条的人走晴或夜的样式。封面的标题叠在第一个镜头上。
 """
@@ -23,7 +25,25 @@ from PIL import Image, ImageDraw  # noqa: E402
 
 V.ART = os.path.join(HERE, "art")
 V.layers.Layered = motion.Shot
-V.H3_SHOTS = []
+# H3 片段（h3.py 出）：5b 取星。环境变量 C5B 换种子
+CLIPS = {"5b": os.path.join(HERE, "h3", os.environ.get("C5B", "5b_s42") + ".mp4")}
+V.H3_SHOTS = list(CLIPS)
+_load = V.Shot.load
+
+
+def load(self):
+    """取星那一下灯罩本来就该变暗：不对首帧校色、不剪暗掉的帧（同第 1 期的 7b、重做版的 n2）。"""
+    if self.key != "5b" or self.frames is not None or not os.path.exists(self.clip):
+        return _load(self)
+    r = V.imageio_ffmpeg.read_frames(self.clip)
+    meta = next(r)
+    w, h = meta["size"]
+    self.fps = meta["fps"]
+    self.frames = [Image.fromarray(np.frombuffer(b, np.uint8).reshape(h, w, 3)) for b in r]
+    return self.frames
+
+
+V.Shot.load = load
 NO = 2
 TITLE = ("灯罩里没有灯泡，", "只有一颗星星")
 GREY = (170, 168, 162)
@@ -107,7 +127,7 @@ def plan(only=None):
             clips.append(np.zeros(int(d * V.SR)))
             t += d + V.GAP
         dur = t - V.GAP + V.TAIL + (V.END_HOLD if key == table[-1][0] else 0)
-        floor = 5.5 if key == "1" else 4.0  # 封面留给标题；镜头最短 4 秒
+        floor = 5.5 if key == "1" else 6.5 if key in CLIPS else 4.0  # 封面留给标题；H3 片段 6 秒要放完；镜头最短 4 秒
         shots.append((key, max(dur, want or 0, floor), subs))
     if only:
         shots = [s for s in shots if s[0] in only]
@@ -120,6 +140,8 @@ if __name__ == "__main__":
     V.END = end_layer() if not only else Image.new("RGBA", (V.W, V.H))
     shots, clips = plan(only)
     objs = [V.Shot(k, d, s, i) for i, (k, d, s) in enumerate(shots)]
+    for o in objs:
+        o.clip = CLIPS.get(o.key, "")
     starts = np.cumsum([0] + [o.dur - V.FADE for o in objs[:-1]])
     total = starts[-1] + objs[-1].dur
     print(f"总长 {total:.1f}s，{len(objs)} 个镜头", flush=True)
